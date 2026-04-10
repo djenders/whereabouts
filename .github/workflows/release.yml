@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout into correctly named folder
+        uses: actions/checkout@v4
+        with:
+          path: whereabouts
+
+      - name: Remove files that shouldn't be in the plugin
+        run: |
+          rm -rf whereabouts/.git
+          rm -rf whereabouts/.github
+          rm -f  whereabouts/.gitignore
+          rm -f  whereabouts/.DS_Store
+          find whereabouts -name '.DS_Store' -delete
+
+      - name: Create plugin ZIP
+        run: zip -r whereabouts.zip whereabouts/
+
+      - name: Upload ZIP to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: whereabouts.zip
+
+      - name: Remove default source code archives
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          for asset in $(gh release view "$TAG" --json assets --jq '.assets[].name' | grep -E 'Source code'); do
+            gh release delete-asset "$TAG" "$asset" --yes 2>/dev/null || true
+          done

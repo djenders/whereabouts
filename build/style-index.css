@@ -1,0 +1,10 @@
+/* Whereabouts — Frontend */
+.whereabouts-sentence { }
+.whereabouts-city-link {
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+    color: inherit;
+    transition: opacity 0.15s ease;
+}
+.whereabouts-city-link:hover { opacity: 0.7; }

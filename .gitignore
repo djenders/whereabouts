@@ -1,0 +1,21 @@
+# npm dependencies — regenerate locally with `npm install`
+node_modules/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor directories
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Build artifacts (we intentionally commit /build for no-Node installs,
+# but exclude any local build cache)
+.cache/
+*.log
+
+# WordPress local dev leftovers
+wp-config.php

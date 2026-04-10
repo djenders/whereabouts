@@ -1,0 +1,21 @@
+{
+    "$schema": "https://schemas.wp.org/trunk/block.json",
+    "apiVersion": 3,
+    "name": "whereabouts/sentence",
+    "version": "1.0.0",
+    "title": "Whereabouts",
+    "category": "text",
+    "icon": "location",
+    "description": "Renders a natural-language sentence about where you are, what time it is, and what the weather's like.",
+    "keywords": ["whereabouts", "weather", "location", "time", "now"],
+    "textdomain": "whereabouts",
+    "editorScript": "file:./build/index.js",
+    "editorStyle":  "file:./build/index.css",
+    "style":        "file:./build/style-index.css",
+    "supports": {
+        "html": false,
+        "color": { "text": true, "background": true },
+        "typography": { "fontSize": true, "lineHeight": true, "fontStyle": true, "fontWeight": true },
+        "spacing": { "margin": true, "padding": true }
+    }
+}
