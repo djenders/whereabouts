@@ -1,7 +1,7 @@
 {
     "name": "whereabouts",
-    "version": "1.0.0",
-    "description": "Natural-language location/time/weather Gutenberg block",
+    "version": "1.4.0",
+    "description": "Natural-language location/time/weather Gutenberg block and shortcode suite",
     "scripts": {
         "build": "wp-scripts build src/index.js --output-path=build",
         "start": "wp-scripts start src/index.js --output-path=build"

@@ -58,7 +58,7 @@
                 createElement(BlockControls, null,
                     createElement(ToolbarGroup, null,
                         createElement(ToolbarDropdownMenu, {
-                            icon: 'editor-paragraph',
+                            icon: 'location',
                             label: 'Tag: ' + tagLabel,
                             controls: controls
                         })

@@ -6,7 +6,7 @@
 
 ---
 
-A WordPress plugin that adds a Gutenberg block rendering a natural-language sentence about your current location, time, and weather — fully customisable via a sentence template.
+A WordPress plugin that adds a Gutenberg block and shortcode suite for rendering your current location, time, and weather — fully customisable.
 
 > *It's half past nine in [Milwaukee](/now), where it is overcast and 47°F.*
 
@@ -16,12 +16,13 @@ Or however you want to say it.
 
 ## Features
 
-- **Sentence template** — arrange tokens however you like: `It's {condition} in {city} at {time}.`
-- **Smart time formatting** — natural phrases at 5-minute marks (half past nine, quarter to three); exact digital fallback for everything else (9:37 pm)
-- **Three time token styles** — default, short, and long
-- **Open-Meteo weather** — free, no API key, real-time conditions
+- **Sentence template block** — arrange tokens however you like in a Gutenberg block
+- **Shortcodes** — drop individual data points anywhere WordPress renders text
+- **Smart time formatting** — natural phrases at 5-minute marks; digital fallback for everything else
+- **Classic cartographic coordinates** — 43°02′20″ N, 87°54′24″ W
+- **Open-Meteo weather** — free, no API key required
 - **30-minute weather cache** — fast page loads, auto-cleared when settings change
-- **City link** — `{city}` optionally links to your /now page
+- **City geocoder** — with pick list for ambiguous results (Paris, TX vs Paris, France)
 - **12 or 24-hour clock** — your preference
 - **°F or °C** — your preference
 - **Tag selector** — render as `<p>`, `<h1>`–`<h4>`, or `<span>` from the block toolbar
@@ -29,7 +30,9 @@ Or however you want to say it.
 
 ---
 
-## Tokens
+## Block Tokens
+
+Use these in the sentence template on the settings page.
 
 ### Time
 
@@ -39,14 +42,14 @@ Or however you want to say it.
 | `{time:short}` | half past nine | 9:37 |
 | `{time:long}` | half past nine | 9:37 in the evening |
 
-Natural phrases never include am/pm — they don't need it. The digital fallback respects your clock format setting (12 or 24-hour). Midnight and noon are always written as words.
+Natural phrases never include am/pm. Midnight and noon are always written as words. The digital fallback respects your 12/24-hour setting.
 
-**Period phrases** used by `{time:long}` on digital fallback:
+**Period phrases** (used by `{time:long}` on digital fallback):
 - midnight to noon → *in the morning*
 - noon to 6pm → *in the afternoon*
 - 6pm to midnight → *in the evening*
 
-### Place & Weather
+### Place, Weather & Coordinates
 
 | Token | Example output |
 |---|---|
@@ -55,6 +58,9 @@ Natural phrases never include am/pm — they don't need it. The digital fallback
 | `{temp}` | 47°F or 47°C |
 | `{temp:number}` | 47° |
 | `{temp:long}` | 47 degrees |
+| `{coords}` | 43°02′20″ N, 87°54′24″ W |
+| `{coords:dms}` | 43°02′20″ N, 87°54′24″ W |
+| `{coords:decimal}` | 43.0389, -87.9065 |
 
 ### Example templates
 
@@ -65,9 +71,31 @@ It's {time} in {city}, where it is {condition} and {temp}.
 It's {condition} in {city} at {time:long}.
 → It's overcast in Milwaukee at 9:37 in the evening.
 
-{city} — {condition}, {temp:long}.
-→ Milwaukee — overcast, 47 degrees.
+{coords} · {condition}, {temp:long}
+→ 43°02′20″ N, 87°54′24″ W · overcast, 47 degrees
 ```
+
+---
+
+## Shortcodes
+
+Use these anywhere WordPress renders text — posts, pages, widgets, theme templates.
+
+| Shortcode | Example output |
+|---|---|
+| `[whereabouts time]` | half past nine *(or 9:37 pm)* |
+| `[whereabouts time="short"]` | half past nine *(or 9:37)* |
+| `[whereabouts time="long"]` | half past nine *(or 9:37 in the evening)* |
+| `[whereabouts condition]` | overcast |
+| `[whereabouts temp]` | 47°F |
+| `[whereabouts temp="number"]` | 47° |
+| `[whereabouts temp="long"]` | 47 degrees |
+| `[whereabouts city]` | Milwaukee (linked if /now URL is set) |
+| `[whereabouts coords]` | 43°02′20″ N, 87°54′24″ W |
+| `[whereabouts coords="decimal"]` | 43.0389, -87.9065 |
+| `[whereabouts coords="dms"]` | 43°02′20″ N, 87°54′24″ W |
+
+Each shortcode wraps its output in a `<span>` with a CSS class (e.g. `whereabouts-time`, `whereabouts-coords`) for styling.
 
 ---
 
@@ -84,26 +112,31 @@ It's {condition} in {city} at {time:long}.
 
 ## GitHub Auto-Updates
 
-Whereabouts checks for updates directly from this GitHub repository. Updates appear in **Dashboard → Updates** just like any other plugin — no wordpress.org account required.
+Whereabouts checks for updates directly from this GitHub repository. Updates appear in **Dashboard → Updates** just like any other plugin.
 
-To publish an update, create a new GitHub Release with a version tag (e.g. `v1.3.0`). The tag must match the version in the plugin header.
+To publish an update, create a new GitHub Release with a version tag (e.g. `v1.4.0`). The tag must match the version in the plugin header.
 
 ---
 
 ## Styling
 
-The block renders with the class `whereabouts-sentence`. Style it in your theme:
-
 ```css
-.whereabouts-sentence {
-    font-size: 1.2em;
-    font-style: italic;
-    color: #555;
+/* Block sentence wrapper */
+.whereabouts-sentence { }
+
+/* City link */
+.whereabouts-city-link {
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    color: inherit;
 }
 
-.whereabouts-city-link {
-    /* city link styles — inherits color by default */
-}
+/* Shortcode spans */
+.whereabouts-time      { }
+.whereabouts-condition { }
+.whereabouts-temp      { }
+.whereabouts-city      { }
+.whereabouts-coords    { }
 ```
 
 ---

@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Whereabouts
  * Plugin URI:  https://github.com/djenders/whereabouts
- * Description: A Gutenberg block that renders a natural-language sentence about your current location, time, and weather — fully customisable via a sentence template.
- * Version:     1.3.0
+ * Description: A Gutenberg block and shortcode suite that renders your current location, time, and weather — fully customisable.
+ * Version:     1.4.0
  * Author:      Dennis Jenders
  * Author URI:  https://github.com/djenders
  * License:     GPL-2.0-or-later
@@ -13,7 +13,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'WHEREABOUTS_VERSION',        '1.3.0' );
+define( 'WHEREABOUTS_VERSION',        '1.4.0' );
 define( 'WHEREABOUTS_PLUGIN_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'WHEREABOUTS_PLUGIN_URL',     plugin_dir_url( __FILE__ ) );
 define( 'WHEREABOUTS_OPTIONS_KEY',    'whereabouts_settings' );
@@ -21,9 +21,7 @@ define( 'WHEREABOUTS_CACHE_KEY',      'whereabouts_weather' );
 define( 'WHEREABOUTS_CACHE_DURATION', 30 * MINUTE_IN_SECONDS );
 
 /* ------------------------------------------------------------------ */
-/*  GitHub auto-updates via Plugin Update Checker (optional)           */
-/*  Drop the real library into includes/plugin-update-checker/ and     */
-/*  this activates automatically. See README for instructions.         */
+/*  GitHub auto-updates via Plugin Update Checker                       */
 /* ------------------------------------------------------------------ */
 $puc_loader = WHEREABOUTS_PLUGIN_DIR . 'includes/plugin-update-checker/load-v5p6.php';
 if ( file_exists( $puc_loader ) ) {
@@ -38,19 +36,7 @@ if ( file_exists( $puc_loader ) ) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Plugin action links (Installed Plugins page)                       */
-/* ------------------------------------------------------------------ */
-add_filter( 'plugin_action_links_whereabouts/whereabouts.php', function ( $links ) {
-    $settings_link = sprintf(
-        '<a href="%s">My Whereabouts</a>',
-        admin_url( 'options-general.php?page=whereabouts' )
-    );
-    array_unshift( $links, $settings_link );
-    return $links;
-} );
-
-/* ------------------------------------------------------------------ */
-/*  Redirect to settings page after activation                         */
+/*  Activation redirect                                                 */
 /* ------------------------------------------------------------------ */
 register_activation_hook( __FILE__, function () {
     add_option( 'whereabouts_activation_redirect', true );
@@ -67,6 +53,17 @@ add_action( 'admin_init', function () {
 } );
 
 /* ------------------------------------------------------------------ */
+/*  Plugin action links                                                 */
+/* ------------------------------------------------------------------ */
+add_filter( 'plugin_action_links_whereabouts/whereabouts.php', function ( $links ) {
+    array_unshift( $links, sprintf(
+        '<a href="%s">My Whereabouts</a>',
+        admin_url( 'options-general.php?page=whereabouts' )
+    ) );
+    return $links;
+} );
+
+/* ------------------------------------------------------------------ */
 /*  Register block                                                      */
 /* ------------------------------------------------------------------ */
 add_action( 'init', function () {
@@ -80,10 +77,10 @@ add_action( 'init', function () {
 
 function whereabouts_render_block( array $attributes ): string {
     $opts        = get_option( WHEREABOUTS_OPTIONS_KEY, [] );
-    $city        = sanitize_text_field( $opts['city']     ?? 'Milwaukee' );
-    $lat         = floatval( $opts['lat']                 ?? 43.0389 );
-    $lon         = floatval( $opts['lon']                 ?? -87.9065 );
-    $now_url     = esc_url( $opts['now_url']              ?? '' );
+    $city        = sanitize_text_field( $opts['city']    ?? 'Milwaukee' );
+    $lat         = floatval( $opts['lat']                ?? 43.0389 );
+    $lon         = floatval( $opts['lon']                ?? -87.9065 );
+    $now_url     = esc_url( $opts['now_url']             ?? '' );
     $clock_24    = ! empty( $opts['clock_24'] );
     $use_celsius = ! empty( $opts['use_celsius'] );
     $template    = $opts['template'] ?? "It's {time} in {city}, where it is {condition} and {temp}.";
@@ -92,18 +89,15 @@ function whereabouts_render_block( array $attributes ): string {
     $tag          = in_array( $attributes['tagName'] ?? 'p', $allowed_tags, true )
                     ? $attributes['tagName'] : 'p';
 
-    // Weather (cached)
-    $weather     = whereabouts_get_weather( $lat, $lon, $use_celsius );
-    $tz_string   = $weather['timezone'];
+    $weather   = whereabouts_get_weather( $lat, $lon, $use_celsius );
+    $tz_string = $weather['timezone'];
 
-    // Time (always live)
     try {
         $now = new DateTime( 'now', new DateTimeZone( $tz_string ) );
     } catch ( Exception $e ) {
         $now = new DateTime( 'now' );
     }
 
-    // Build token values
     $city_value = $now_url
         ? sprintf( '<a href="%s" class="whereabouts-city-link">%s</a>', esc_url( $now_url ), esc_html( $city ) )
         : esc_html( $city );
@@ -117,6 +111,9 @@ function whereabouts_render_block( array $attributes ): string {
         '{temp}'         => whereabouts_format_temp( $weather['temp'], $use_celsius, 'symbol' ),
         '{temp:number}'  => whereabouts_format_temp( $weather['temp'], $use_celsius, 'number' ),
         '{temp:long}'    => whereabouts_format_temp( $weather['temp'], $use_celsius, 'long' ),
+        '{coords}'       => whereabouts_format_coords( $lat, $lon, 'dms' ),
+        '{coords:dms}'   => whereabouts_format_coords( $lat, $lon, 'dms' ),
+        '{coords:decimal}' => whereabouts_format_coords( $lat, $lon, 'decimal' ),
     ];
 
     $sentence = str_replace( array_keys( $tokens ), array_values( $tokens ), $template );
@@ -129,15 +126,71 @@ function whereabouts_render_block( array $attributes ): string {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Shortcodes                                                          */
+/*                                                                      */
+/*  Usage:                                                              */
+/*    [whereabouts time]                                                */
+/*    [whereabouts time="short"]                                        */
+/*    [whereabouts time="long"]                                         */
+/*    [whereabouts temp]                                                */
+/*    [whereabouts temp="number"]                                       */
+/*    [whereabouts temp="long"]                                         */
+/*    [whereabouts condition]                                           */
+/*    [whereabouts city]                                                */
+/*    [whereabouts coords]           → 43°02′20″ N, 87°54′24″ W       */
+/*    [whereabouts coords="decimal"] → 43.0389, -87.9065               */
+/*    [whereabouts coords="dms"]     → 43°02′20″ N, 87°54′24″ W       */
+/* ------------------------------------------------------------------ */
+add_action( 'init', function () {
+    add_shortcode( 'whereabouts', 'whereabouts_shortcode' );
+} );
+
+function whereabouts_shortcode( $atts ): string {
+    $opts        = get_option( WHEREABOUTS_OPTIONS_KEY, [] );
+    $city        = sanitize_text_field( $opts['city']    ?? 'Milwaukee' );
+    $lat         = floatval( $opts['lat']                ?? 43.0389 );
+    $lon         = floatval( $opts['lon']                ?? -87.9065 );
+    $now_url     = esc_url( $opts['now_url']             ?? '' );
+    $clock_24    = ! empty( $opts['clock_24'] );
+    $use_celsius = ! empty( $opts['use_celsius'] );
+
+    $weather   = whereabouts_get_weather( $lat, $lon, $use_celsius );
+    $tz_string = $weather['timezone'];
+
+    try {
+        $now = new DateTime( 'now', new DateTimeZone( $tz_string ) );
+    } catch ( Exception $e ) {
+        $now = new DateTime( 'now' );
+    }
+
+    // Shortcode attributes are positional — [whereabouts time="short"]
+    // $atts[0] is the token name, 'time'/'temp'/'coords' etc.
+    // Named attributes are the style modifier.
+    $atts = (array) $atts;
+
+    $token = strtolower( trim( $atts[0] ?? '' ) );
+    $style = strtolower( trim( $atts['time'] ?? $atts['temp'] ?? $atts['coords'] ?? 'default' ) );
+
+    return match( $token ) {
+        'time'      => '<span class="whereabouts-time">'      . whereabouts_format_time( $now, $clock_24, $style ) . '</span>',
+        'condition' => '<span class="whereabouts-condition">' . esc_html( $weather['description'] ) . '</span>',
+        'temp'      => '<span class="whereabouts-temp">'      . whereabouts_format_temp( $weather['temp'], $use_celsius, $style === 'default' ? 'symbol' : $style ) . '</span>',
+        'city'      => '<span class="whereabouts-city">'      . ( $now_url ? sprintf( '<a href="%s" class="whereabouts-city-link">%s</a>', esc_url( $now_url ), esc_html( $city ) ) : esc_html( $city ) ) . '</span>',
+        'coords'    => '<span class="whereabouts-coords">'    . whereabouts_format_coords( $lat, $lon, $style === 'default' ? 'dms' : $style ) . '</span>',
+        default     => '',
+    };
+}
+
+/* ------------------------------------------------------------------ */
 /*  Token helpers                                                       */
 /* ------------------------------------------------------------------ */
 function whereabouts_format_temp( ?int $temp, bool $celsius, string $style ): string {
     if ( $temp === null ) return '';
     $unit_sym = $celsius ? '°C' : '°F';
     return match ( $style ) {
-        'number' => $temp . '°',           // 41°
-        'long'   => $temp . ' degrees',    // 41 degrees
-        default  => $temp . $unit_sym,     // 41°F / 41°C
+        'number' => $temp . '°',
+        'long'   => $temp . ' degrees',
+        default  => $temp . $unit_sym,
     };
 }
 
@@ -146,29 +199,23 @@ function whereabouts_format_time( DateTime $dt, bool $use_24, string $style = 'd
 
     $hour   = (int) $dt->format( 'g' );
     $minute = (int) $dt->format( 'i' );
-    $ampm   = $dt->format( 'a' );
     $hour24 = (int) $dt->format( 'G' );
 
-    // Period phrase for {time:long} digital fallback only
     $period = match( true ) {
         $hour24 >= 0  && $hour24 < 12 => 'in the morning',
         $hour24 >= 12 && $hour24 < 18 => 'in the afternoon',
         default                        => 'in the evening',
     };
 
-    // Special labels — midnight and noon never get am/pm or period phrase
     $is_midnight = ( $hour24 === 0 );
     $is_noon     = ( $hour24 === 12 );
     $label       = $is_midnight ? 'midnight' : ( $is_noon ? 'noon' : null );
 
-    // On the hour
     if ( $minute === 0 ) {
         if ( $label ) return $label;
-        // Natural phrase — no am/pm regardless of style
         return "{$hour} o'clock";
     }
 
-    // For past/to phrases — always clean, no am/pm, no period
     $hour_word = $label ?? (string) $hour;
 
     $named = [
@@ -197,12 +244,39 @@ function whereabouts_format_time( DateTime $dt, bool $use_24, string $style = 'd
     ];
     if ( isset( $to_named[ $minute ] ) ) return $to_named[ $minute ];
 
-    // Digital fallback — style determines suffix
     return match( $style ) {
-        'short'  => $dt->format( 'g:i' ),                        // 9:37
-        'long'   => $dt->format( 'g:i' ) . ' ' . $period,       // 9:37 in the evening
-        default  => $dt->format( 'g:i a' ),                      // 9:37 pm
+        'short'  => $dt->format( 'g:i' ),
+        'long'   => $dt->format( 'g:i' ) . ' ' . $period,
+        default  => $dt->format( 'g:i a' ),
     };
+}
+
+function whereabouts_format_coords( float $lat, float $lon, string $style = 'dms' ): string {
+    if ( $style === 'decimal' ) {
+        return round( $lat, 4 ) . ', ' . round( $lon, 4 );
+    }
+
+    // Degrees, minutes, seconds (classic cartographic)
+    $to_dms = function( float $decimal ): array {
+        $abs     = abs( $decimal );
+        $deg     = (int) $abs;
+        $min_dec = ( $abs - $deg ) * 60;
+        $min     = (int) $min_dec;
+        $sec     = round( ( $min_dec - $min ) * 60 );
+        return [ $deg, $min, $sec ];
+    };
+
+    [ $lat_d, $lat_m, $lat_s ] = $to_dms( $lat );
+    [ $lon_d, $lon_m, $lon_s ] = $to_dms( $lon );
+
+    $lat_dir = $lat >= 0 ? 'N' : 'S';
+    $lon_dir = $lon >= 0 ? 'E' : 'W';
+
+    return sprintf(
+        '%d°%02d′%02d″ %s, %d°%02d′%02d″ %s',
+        $lat_d, $lat_m, $lat_s, $lat_dir,
+        $lon_d, $lon_m, $lon_s, $lon_dir
+    );
 }
 
 /* ------------------------------------------------------------------ */
@@ -306,7 +380,6 @@ function whereabouts_settings_page(): void {
     $use_celsius = ! empty( $opts['use_celsius'] );
     $template    = esc_attr( $opts['template'] ?? "It's {time} in {city}, where it is {condition} and {temp}." );
 
-    // Cache status
     $cache_key = WHEREABOUTS_CACHE_KEY . '_' . md5( "{$lat},{$lon}," . ( $use_celsius ? 'c' : 'f' ) );
     $cache_exp = get_option( '_transient_timeout_' . $cache_key, 0 );
     if ( $cache_exp && $cache_exp > time() )
@@ -316,8 +389,9 @@ function whereabouts_settings_page(): void {
     else
         $cache_status = '⚪ Not yet cached';
 
-    // Open-Meteo verify URL
     $verify_url = "https://open-meteo.com/en/docs#latitude={$lat}&longitude={$lon}";
+    $coords_dms     = whereabouts_format_coords( floatval( $lat ), floatval( $lon ), 'dms' );
+    $coords_decimal = whereabouts_format_coords( floatval( $lat ), floatval( $lon ), 'decimal' );
     ?>
     <div class="wrap" id="whereabouts-admin">
         <h1>📍 Whereabouts <span style="font-size:.6em;font-weight:400;color:#777;vertical-align:middle;">v<?= WHEREABOUTS_VERSION ?></span></h1>
@@ -327,7 +401,6 @@ function whereabouts_settings_page(): void {
             <?php settings_fields( 'whereabouts_group' ); ?>
             <table class="form-table" role="presentation">
 
-                <!-- NOW PAGE URL -->
                 <tr>
                     <th scope="row"><label for="wa_now_url">"/Now" Page URL</label></th>
                     <td>
@@ -335,11 +408,10 @@ function whereabouts_settings_page(): void {
                                name="<?= WHEREABOUTS_OPTIONS_KEY ?>[now_url]"
                                value="<?= $now_url ?>" class="regular-text"
                                placeholder="https://yoursite.com/now" />
-                        <p class="description">Optional. The <code>{city}</code> token will link here.</p>
+                        <p class="description">Optional. The <code>{city}</code> token and <code>[whereabouts city]</code> shortcode will link here.</p>
                     </td>
                 </tr>
 
-                <!-- CITY + GEOCODE -->
                 <tr>
                     <th scope="row"><label for="wa_city">City Name</label></th>
                     <td>
@@ -354,13 +426,11 @@ function whereabouts_settings_page(): void {
                         </div>
                         <p class="description">You can include state or country to narrow results — e.g. "Paris, TX" or "Paris, France".</p>
 
-                        <!-- Pick list -->
                         <div id="wa-picklist" style="margin-top:10px;display:none;">
                             <p style="margin:0 0 8px;"><strong>Multiple matches — select the right one:</strong></p>
                             <div id="wa-picklist-options" style="display:flex;flex-direction:column;gap:6px;"></div>
                         </div>
 
-                        <!-- Confirmed -->
                         <div id="wa-geocode-confirmed" style="margin-top:10px;display:none;padding:8px 12px;background:#edfaed;border:1px solid #7ad47a;border-radius:4px;">
                             ✅ <strong>Confirmed:</strong> <span id="wa-geo-label"></span>
                         </div>
@@ -368,7 +438,6 @@ function whereabouts_settings_page(): void {
                     </td>
                 </tr>
 
-                <!-- HIDDEN LAT/LON -->
                 <tr style="display:none">
                     <td colspan="2">
                         <input type="hidden" id="wa_lat" name="<?= WHEREABOUTS_OPTIONS_KEY ?>[lat]" value="<?= $lat ?>" />
@@ -376,18 +445,18 @@ function whereabouts_settings_page(): void {
                     </td>
                 </tr>
 
-                <!-- STORED COORDS + VERIFY LINK -->
                 <tr>
                     <th scope="row">Stored Coordinates</th>
                     <td>
-                        <code id="wa-stored-coords">Lat: <?= $lat ?>, Lon: <?= $lon ?></code><br>
+                        <code id="wa-stored-coords"><?= esc_html( $coords_dms ) ?></code>
+                        <span style="color:#888;margin:0 6px;">·</span>
+                        <code id="wa-stored-decimal"><?= esc_html( $coords_decimal ) ?></code><br>
                         <a id="wa-verify-link" href="<?= esc_url( $verify_url ) ?>" target="_blank" rel="noopener"
                            style="font-size:.9em;">↗ Verify on Open-Meteo</a>
                         <p class="description">Saved and used for weather lookups.</p>
                     </td>
                 </tr>
 
-                <!-- CLOCK FORMAT -->
                 <tr>
                     <th scope="row">Clock Format</th>
                     <td>
@@ -404,7 +473,6 @@ function whereabouts_settings_page(): void {
                     </td>
                 </tr>
 
-                <!-- TEMPERATURE UNIT -->
                 <tr>
                     <th scope="row">Temperature Unit</th>
                     <td>
@@ -421,7 +489,6 @@ function whereabouts_settings_page(): void {
                     </td>
                 </tr>
 
-                <!-- SENTENCE TEMPLATE -->
                 <tr>
                     <th scope="row"><label for="wa_template">Sentence Template</label></th>
                     <td>
@@ -441,10 +508,11 @@ function whereabouts_settings_page(): void {
                             <code class="wa-token" data-token="{temp}">{temp}</code>
                             <code class="wa-token" data-token="{temp:number}">{temp:number}</code>
                             <code class="wa-token" data-token="{temp:long}">{temp:long}</code>
+                            <code class="wa-token" data-token="{coords}">{coords}</code>
+                            <code class="wa-token" data-token="{coords:decimal}">{coords:decimal}</code>
                             — click any token to insert it.
                         </p>
 
-                        <!-- Live template preview -->
                         <div style="margin-top:10px;">
                             <strong style="font-size:.85em;text-transform:uppercase;letter-spacing:.05em;color:#777;">Live Preview</strong>
                             <div id="wa-template-preview" style="margin-top:6px;padding:10px 14px;background:#f9f9f9;border:1px solid #ddd;border-left:3px solid #2271b1;border-radius:3px;font-style:italic;min-height:2em;"></div>
@@ -453,9 +521,30 @@ function whereabouts_settings_page(): void {
                 </tr>
 
             </table>
-
             <?php submit_button( 'Save Settings' ); ?>
         </form>
+
+        <!-- SHORTCODE REFERENCE -->
+        <hr />
+        <h2>Shortcodes</h2>
+        <p>Use these anywhere WordPress renders text — posts, pages, widgets, templates.</p>
+        <table class="widefat" style="max-width:600px;">
+            <thead>
+                <tr><th>Shortcode</th><th>Example output</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>[whereabouts time]</code></td><td>half past nine <em>(or 9:37 pm)</em></td></tr>
+                <tr><td><code>[whereabouts time="short"]</code></td><td>half past nine <em>(or 9:37)</em></td></tr>
+                <tr><td><code>[whereabouts time="long"]</code></td><td>half past nine <em>(or 9:37 in the evening)</em></td></tr>
+                <tr><td><code>[whereabouts condition]</code></td><td><?= esc_html( whereabouts_get_weather( floatval($lat), floatval($lon), $use_celsius )['description'] ) ?></td></tr>
+                <tr><td><code>[whereabouts temp]</code></td><td><?= whereabouts_format_temp( whereabouts_get_weather( floatval($lat), floatval($lon), $use_celsius )['temp'], $use_celsius, 'symbol' ) ?></td></tr>
+                <tr><td><code>[whereabouts temp="number"]</code></td><td><?= whereabouts_format_temp( whereabouts_get_weather( floatval($lat), floatval($lon), $use_celsius )['temp'], $use_celsius, 'number' ) ?></td></tr>
+                <tr><td><code>[whereabouts temp="long"]</code></td><td><?= whereabouts_format_temp( whereabouts_get_weather( floatval($lat), floatval($lon), $use_celsius )['temp'], $use_celsius, 'long' ) ?></td></tr>
+                <tr><td><code>[whereabouts city]</code></td><td><?= esc_html( $city ) ?></td></tr>
+                <tr><td><code>[whereabouts coords]</code></td><td><?= esc_html( $coords_dms ) ?></td></tr>
+                <tr><td><code>[whereabouts coords="decimal"]</code></td><td><?= esc_html( $coords_decimal ) ?></td></tr>
+            </tbody>
+        </table>
 
         <!-- CACHE -->
         <hr />
@@ -484,7 +573,7 @@ function whereabouts_settings_page(): void {
         <!-- FULL PREVIEW -->
         <hr />
         <h2>Full Block Preview</h2>
-        <p>Rendered output using your saved settings (weather may be from cache):</p>
+        <p>Rendered output using your saved settings:</p>
         <div style="background:#f9f9f9;border:1px solid #ddd;border-left:4px solid #2271b1;padding:16px 20px;border-radius:4px;font-size:1.1em;font-style:italic;">
             <?php echo whereabouts_render_block( [ 'tagName' => 'p' ] ); ?>
         </div>
@@ -492,7 +581,6 @@ function whereabouts_settings_page(): void {
 
     <script>
     (function () {
-        /* ---- Geocoder ---- */
         const geocodeBtn  = document.getElementById('wa-geocode-btn');
         const cityInput   = document.getElementById('wa_city');
         const latInput    = document.getElementById('wa_lat');
@@ -502,20 +590,39 @@ function whereabouts_settings_page(): void {
         const confirmed   = document.getElementById('wa-geocode-confirmed');
         const geoLabel    = document.getElementById('wa-geo-label');
         const geoError    = document.getElementById('wa-geocode-error');
-        const storedCoords = document.getElementById('wa-stored-coords');
+        const storedCoords  = document.getElementById('wa-stored-coords');
+        const storedDecimal = document.getElementById('wa-stored-decimal');
         const verifyLink  = document.getElementById('wa-verify-link');
+
+        function toDMS(decimal) {
+            const abs = Math.abs(decimal);
+            const deg = Math.floor(abs);
+            const minDec = (abs - deg) * 60;
+            const min = Math.floor(minDec);
+            const sec = Math.round((minDec - min) * 60);
+            return [deg, min, sec];
+        }
+
+        function formatDMS(lat, lon) {
+            const [ld, lm, ls] = toDMS(lat);
+            const [od, om, os] = toDMS(lon);
+            const latDir = lat >= 0 ? 'N' : 'S';
+            const lonDir = lon >= 0 ? 'E' : 'W';
+            return `${ld}°${String(lm).padStart(2,'0')}′${String(ls).padStart(2,'0')}″ ${latDir}, ${od}°${String(om).padStart(2,'0')}′${String(os).padStart(2,'0')}″ ${lonDir}`;
+        }
 
         function confirmPlace(place, label) {
             latInput.value  = place.latitude;
             lonInput.value  = place.longitude;
             cityInput.value = place.name;
 
-            storedCoords.textContent = `Lat: ${place.latitude}, Lon: ${place.longitude}`;
+            storedCoords.textContent  = formatDMS(place.latitude, place.longitude);
+            storedDecimal.textContent = `${place.latitude}, ${place.longitude}`;
             verifyLink.href = `https://open-meteo.com/en/docs#latitude=${place.latitude}&longitude=${place.longitude}`;
             geoLabel.textContent = label;
 
-            picklist.style.display   = 'none';
-            confirmed.style.display  = 'block';
+            picklist.style.display  = 'none';
+            confirmed.style.display = 'block';
         }
 
         geocodeBtn.addEventListener('click', async function () {
@@ -527,10 +634,10 @@ function whereabouts_settings_page(): void {
 
             geocodeBtn.disabled    = true;
             geocodeBtn.textContent = '⏳ Looking up…';
-            picklist.style.display   = 'none';
-            confirmed.style.display  = 'none';
-            geoError.style.display   = 'none';
-            pickOptions.innerHTML    = '';
+            picklist.style.display  = 'none';
+            confirmed.style.display = 'none';
+            geoError.style.display  = 'none';
+            pickOptions.innerHTML   = '';
 
             try {
                 const res  = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=5&language=en&format=json`);
@@ -564,7 +671,7 @@ function whereabouts_settings_page(): void {
                     picklist.style.display = 'block';
                 }
             } catch (e) {
-                geoError.textContent  = '❌ ' + e.message;
+                geoError.textContent   = '❌ ' + e.message;
                 geoError.style.display = 'block';
             } finally {
                 geocodeBtn.disabled    = false;
@@ -572,37 +679,37 @@ function whereabouts_settings_page(): void {
             }
         });
 
-        /* ---- Token click-to-insert ---- */
+        // Token click-to-insert
         document.querySelectorAll('.wa-token').forEach(function (chip) {
             chip.style.cursor = 'pointer';
             chip.title = 'Click to insert';
             chip.addEventListener('click', function () {
-                const token    = chip.dataset.token;
-                const field    = document.getElementById('wa_template');
-                const start    = field.selectionStart;
-                const end      = field.selectionEnd;
-                const current  = field.value;
-                field.value    = current.slice(0, start) + token + current.slice(end);
+                const token   = chip.dataset.token;
+                const field   = document.getElementById('wa_template');
+                const start   = field.selectionStart;
+                const end     = field.selectionEnd;
+                field.value   = field.value.slice(0, start) + token + field.value.slice(end);
                 field.selectionStart = field.selectionEnd = start + token.length;
                 field.focus();
                 field.dispatchEvent(new Event('input'));
             });
         });
 
-        /* ---- Live template preview ---- */
+        // Live template preview
         const templateInput = document.getElementById('wa_template');
         const previewBox    = document.getElementById('wa-template-preview');
 
-        // Token sample values — mirrors what the PHP renderer produces
         const samples = {
-            '{time}'        : 'half past nine',
-            '{time:short}'  : 'half past nine',
-            '{time:long}'   : 'half past nine',
-            '{city}'        : <?= json_encode( $now_url ? '<a href="' . esc_js( $now_url ) . '" class="whereabouts-city-link">' . esc_js( $city ) . '</a>' : $city ) ?>,
-            '{condition}'   : 'overcast',
-            '{temp}'        : <?= json_encode( $use_celsius ? '12°C' : '54°F' ) ?>,
-            '{temp:number}' : '54°',
-            '{temp:long}'   : '54 degrees',
+            '{time}'           : 'half past nine',
+            '{time:short}'     : 'half past nine',
+            '{time:long}'      : 'half past nine',
+            '{city}'           : <?= json_encode( $now_url ? '<a href="' . esc_js( $now_url ) . '" class="whereabouts-city-link">' . esc_js( $city ) . '</a>' : $city ) ?>,
+            '{condition}'      : 'overcast',
+            '{temp}'           : <?= json_encode( $use_celsius ? '12°C' : '54°F' ) ?>,
+            '{temp:number}'    : '54°',
+            '{temp:long}'      : '54 degrees',
+            '{coords}'         : <?= json_encode( $coords_dms ) ?>,
+            '{coords:decimal}' : <?= json_encode( $coords_decimal ) ?>,
         };
 
         function updatePreview() {
@@ -614,7 +721,7 @@ function whereabouts_settings_page(): void {
         }
 
         templateInput.addEventListener('input', updatePreview);
-        updatePreview(); // run on load
+        updatePreview();
     })();
     </script>
     <?php
